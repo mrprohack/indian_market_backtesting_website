@@ -1,0 +1,24 @@
+"use client";
+
+import { ChartIcon, RefreshIcon } from "./icons";
+import type { BacktestRequest, BacktestResult } from "@/lib/types";
+
+type Props = { result: BacktestResult | null; error: string | null; running: boolean; onRetry: () => void; config: BacktestRequest; mobileStage: "setup" | "results" | "trades" };
+const money = (n:number) => new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:0}).format(n);
+const pct = (n:number) => `${n.toFixed(2)}%`;
+
+function Curve({ result }:{result:BacktestResult}) {
+  const data=result.equity_curve;if(data.length<2)return null;
+  const w=900,h=240,p=16,vals=data.map(x=>x.equity),lo=Math.min(...vals),hi=Math.max(...vals),span=Math.max(hi-lo,1);
+  const d=data.map((x,i)=>`${i?"L":"M"}${p+i/(data.length-1)*(w-p*2)},${h-p-(x.equity-lo)/span*(h-p*2)}`).join(" ");
+  return <div className="chart-card"><div className="chart-head"><div><span>Equity curve</span><strong>{money(data.at(-1)!.equity)}</strong></div><small>{data[0].date} → {data.at(-1)!.date}</small></div><svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Equity curve"><path className="chart-line" d={d}/></svg></div>;
+}
+
+export function ResultsPanel({result,error,running,onRetry,config,mobileStage}:Props){
+  if(running)return <section className="results-panel state-panel"><div className="loader"/><h2>Running {config.symbol}</h2><p>Calculating the selected strategy on the demo series.</p></section>;
+  if(error)return <section className="results-panel state-panel"><span className="state-icon error">!</span><h2>Run failed</h2><p>{error}</p><button className="secondary-button" onClick={onRetry}><RefreshIcon size={16}/>Retry</button></section>;
+  if(!result)return <section className="results-panel state-panel"><span className="state-icon"><ChartIcon size={25}/></span><h2>Research canvas ready</h2><p>Configure the test on the left, run it, then inspect performance and completed trades here.</p></section>;
+  const m=result.metrics,positive=m.net_profit>=0,showTrades=mobileStage==="trades";
+  if(showTrades)return <section className="results-panel"><header className="results-header"><div><span className="eyebrow">Trade evidence</span><h2>{result.symbol} ledger</h2><p>{m.total_trades} completed trades</p></div></header><div className="result-body">{result.trades.length?<><div className="table-wrap"><table><thead><tr><th>#</th><th>Entry</th><th>Exit</th><th>Qty</th><th>Result</th><th>Reason</th></tr></thead><tbody>{result.trades.map((t,i)=><tr key={`${t.entry_date}-${i}`}><td>{i+1}</td><td>{t.entry_date}</td><td>{t.exit_date}</td><td>{t.quantity}</td><td className={Number(t.net_pnl)>=0?"positive":"negative"}>{money(Number(t.net_pnl))}</td><td>{String(t.exit_reason).replaceAll("_"," ")}</td></tr>)}</tbody></table></div><div className="mobile-trade-list">{result.trades.map((t,i)=><article className="trade-card" key={`${t.entry_date}-${i}`}><div><span>Trade #{i+1}</span><strong className={Number(t.net_pnl)>=0?"positive":"negative"}>{money(Number(t.net_pnl))}</strong></div><dl><div><dt>Entry</dt><dd>{t.entry_date}</dd></div><div><dt>Exit</dt><dd>{t.exit_date}</dd></div><div><dt>Quantity</dt><dd>{t.quantity}</dd></div><div><dt>Reason</dt><dd>{String(t.exit_reason).replaceAll("_"," ")}</dd></div></dl></article>)}</div></>:<div className="no-trades">No completed trades for this run.</div>}</div></section>;
+  return <section className="results-panel"><header className="results-header"><div><span className="eyebrow">Completed run</span><h2>{result.symbol}</h2><p>{result.strategy.replaceAll("_"," ")}</p></div><div className="run-meta"><span>{m.total_trades} trades</span><strong>{money(m.final_equity)}</strong></div></header><div className="result-body"><div className="performance-hero"><div className="pnl-block"><span>Net result</span><strong className={positive?"positive":"negative"}>{money(m.net_profit)}</strong><p className={positive?"positive":"negative"}>{pct(m.total_return_pct)}</p></div><div className="hero-metrics"><div><span>Final equity</span><strong>{money(m.final_equity)}</strong></div><div><span>Drawdown</span><strong>{pct(m.max_drawdown_pct)}</strong></div><div><span>Costs</span><strong>{money(m.total_costs)}</strong></div></div></div><Curve result={result}/><div className="metric-groups"><div className="metric-group"><h3>Performance</h3><div><article><span>CAGR</span><strong>{pct(m.cagr_pct)}</strong></article><article><span>Sharpe</span><strong>{m.sharpe_ratio.toFixed(2)}</strong></article><article><span>Win rate</span><strong>{pct(m.win_rate_pct)}</strong></article></div></div><div className="metric-group"><h3>Execution</h3><div><article><span>Trades</span><strong>{m.total_trades}</strong></article><article><span>Average</span><strong>{money(m.average_trade)}</strong></article><article><span>Profit factor</span><strong>{m.profit_factor.toFixed(2)}</strong></article></div></div></div></div></section>;
+}
