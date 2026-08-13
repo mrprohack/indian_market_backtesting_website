@@ -37,3 +37,30 @@ def test_backtest_endpoint_returns_metrics_and_equity_curve():
     assert payload["symbol"] == "RELIANCE"
     assert "net_profit" in payload["metrics"]
     assert len(payload["equity_curve"]) > 50
+
+
+def test_backtest_rejects_invalid_crossover_periods():
+    response = client.post(
+        "/api/v1/backtests",
+        json={
+            "symbol": "RELIANCE",
+            "strategy": "sma_cross",
+            "fast_period": 30,
+            "slow_period": 10,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_backtest_returns_404_for_unknown_demo_symbol():
+    response = client.post(
+        "/api/v1/backtests",
+        json={
+            "symbol": "NOT_A_SYMBOL",
+            "strategy": "sma_cross",
+            "fast_period": 10,
+            "slow_period": 30,
+        },
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Unknown demo symbol: NOT_A_SYMBOL"

@@ -11,7 +11,7 @@ A simple-to-advanced Indian-market backtesting workspace. This first working rel
 - Versioned NSE equity-delivery fee model (brokerage, STT, exchange transaction charge, SEBI charge, stamp duty, GST).
 - Net profit, total return, CAGR, drawdown, Sharpe, win rate, profit factor, costs, equity curve and trade ledger.
 - FastAPI OpenAPI docs at `/docs`.
-- Responsive Next.js workbench, Docker Compose and CI.
+- Premium responsive Next.js quant workbench with segmented strategy selection, presets, grouped validation, equity + drawdown views, Overview/Trades/Costs analysis, mobile Setup/Results/Trades stages, sticky mobile run controls, Docker Compose and CI.
 
 > The included market data is intentionally synthetic and deterministic. It lets the product and engine run without redistributing licensed historical exchange data. Do not use demo results for investment decisions.
 
