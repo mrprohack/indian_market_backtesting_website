@@ -68,18 +68,20 @@ def run_backtest(request: BacktestRequest, bars: list[Bar]) -> BacktestResult:
     entry_price = 0.0
     entry_date = None
     entry_notional = 0.0
+    entry_costs = 0.0
     pending: str | None = None
     trades: list[Trade] = []
     curve: list[EquityPoint] = []
 
     def close_position(i: int, raw_price: float, reason: str) -> None:
-        nonlocal cash, shares, entry_price, entry_date, entry_notional
+        nonlocal cash, shares, entry_price, entry_date, entry_notional, entry_costs
         exit_price = _apply_slippage(raw_price, request.slippage_bps, "sell")
         sell_value = shares * exit_price
-        costs = calculate_equity_delivery_costs(entry_notional, sell_value)
-        cash += sell_value - costs.total
+        exit_costs = calculate_equity_delivery_costs(0.0, sell_value).total
+        total_costs = entry_costs + exit_costs
+        cash += sell_value - exit_costs
         gross = sell_value - entry_notional
-        net = gross - costs.total
+        net = gross - total_costs
         trades.append(
             Trade(
                 entry_date=entry_date,
@@ -88,7 +90,7 @@ def run_backtest(request: BacktestRequest, bars: list[Bar]) -> BacktestResult:
                 exit_price=round(exit_price, 4),
                 quantity=shares,
                 gross_pnl=round(gross, 2),
-                costs=round(costs.total, 2),
+                costs=round(total_costs, 2),
                 net_pnl=round(net, 2),
                 return_pct=round((net / entry_notional) * 100, 4) if entry_notional else 0.0,
                 exit_reason=reason,
@@ -98,6 +100,7 @@ def run_backtest(request: BacktestRequest, bars: list[Bar]) -> BacktestResult:
         entry_price = 0.0
         entry_date = None
         entry_notional = 0.0
+        entry_costs = 0.0
 
     for i, bar in enumerate(bars):
         if pending == "exit" and shares > 0:
@@ -105,13 +108,15 @@ def run_backtest(request: BacktestRequest, bars: list[Bar]) -> BacktestResult:
         elif pending == "entry" and shares == 0:
             fill = _apply_slippage(bar.open, request.slippage_bps, "buy")
             budget = cash * (request.position_size_pct / 100)
-            qty = int(budget // fill)
+            unit_entry_cost = calculate_equity_delivery_costs(fill, 0.0).total
+            qty = int(budget // (fill + unit_entry_cost))
             if qty > 0:
                 shares = qty
                 entry_price = fill
                 entry_date = bar.timestamp
                 entry_notional = shares * entry_price
-                cash -= entry_notional
+                entry_costs = calculate_equity_delivery_costs(entry_notional, 0.0).total
+                cash -= entry_notional + entry_costs
         pending = None
 
         if shares > 0:
@@ -119,7 +124,15 @@ def run_backtest(request: BacktestRequest, bars: list[Bar]) -> BacktestResult:
             target_price = entry_price * (1 + request.take_profit_pct / 100) if request.take_profit_pct else None
             stop_hit = stop_price is not None and bar.low <= stop_price
             target_hit = target_price is not None and bar.high >= target_price
-            if stop_hit:
+
+            # Gaps are known at the open and therefore take precedence over the
+            # unknown intrabar high/low path. If both thresholds are touched
+            # later within a bar, assume the stop happened first.
+            if stop_price is not None and bar.open <= stop_price:
+                close_position(i, bar.open, "stop_loss")
+            elif target_price is not None and bar.open >= target_price:
+                close_position(i, bar.open, "take_profit")
+            elif stop_hit:
                 close_position(i, stop_price, "stop_loss")
             elif target_hit:
                 close_position(i, target_price, "take_profit")
